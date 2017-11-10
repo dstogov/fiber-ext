@@ -51,6 +51,7 @@ static const zend_uchar ZEND_FIBER_STATUS_DEAD      = 4;
 ZEND_BEGIN_MODULE_GLOBALS(fiber)
 	zend_fiber *current_fiber;
 	zend_long   stack_size;
+	volatile zend_bool pending_interrupt;
 ZEND_END_MODULE_GLOBALS(fiber)
 
 #define FIBER_G(v) ZEND_MODULE_GLOBALS_ACCESSOR(fiber, v)

@@ -403,9 +403,20 @@ ZEND_METHOD(Fiber, reset)
 
 static void fiber_interrupt_function(zend_execute_data *execute_data)
 {
-	const zend_op *opline = EX(opline);
-	zend_fiber *fiber = FIBER_G(current_fiber);
+	const zend_op *opline;
+	zend_fiber *fiber;
 
+	if (!FIBER_G(pending_interrupt)) {
+		if (orig_interrupt_function) {
+			orig_interrupt_function(execute_data);
+		}
+		return;
+	}
+	FIBER_G(pending_interrupt) = 0;
+
+	opline = EX(opline);
+
+	fiber = FIBER_G(current_fiber);
 	fiber->execute_data = execute_data;
 	fiber->stack = EG(vm_stack);
 	fiber->stack_top = EG(vm_stack_top);
@@ -452,6 +463,7 @@ ZEND_METHOD(Fiber, yield)
 		ZVAL_COPY(&fiber->value, fiber->vars);
 	}
 
+	FIBER_G(pending_interrupt) = 1;
 	EG(vm_interrupt) = 2;
 }
 /* }}} */
