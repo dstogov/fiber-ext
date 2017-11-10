@@ -1,0 +1,7 @@
+ARG_ENABLE('fiber', 'fiber support', 'no');
+
+if (PHP_FIBER != 'no') {
+	AC_DEFINE('HAVE_FIBER', 1, 'fiber support enabled');
+
+	EXTENSION('fiber', 'fiber.c', null, '/DZEND_ENABLE_STATIC_TSRMLS_CACHE=1');
+}
