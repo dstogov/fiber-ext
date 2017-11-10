@@ -24,6 +24,7 @@ $foo = function () {
 };
 
 $f = new Fiber($foo);
+$f->resume();
 $f->reset();
 ?>
 --EXPECTF--

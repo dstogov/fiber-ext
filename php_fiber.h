@@ -26,20 +26,18 @@ struct _zend_fiber {
 
 	/* The separate stack used by fiber */
 	zend_vm_stack stack;
-	zval *first_frame;
 	zval *stack_top;
 	zval *stack_end;
 
-	zval value;
-	zval *send_target;
+	/* original fiber to yield from this */
+	zend_fiber *original_fiber;
 
-	zval *vars;
-	int n_vars;
+	zval *send_value;
 
 	zend_uchar status;
 };
 
-static const zend_uchar ZEND_FIBER_STATUS_UNINITED  = 0;
+static const zend_uchar ZEND_FIBER_STATUS_INIT      = 0;
 static const zend_uchar ZEND_FIBER_STATUS_SUSPENDED = 1;
 static const zend_uchar ZEND_FIBER_STATUS_RUNNING   = 2;
 static const zend_uchar ZEND_FIBER_STATUS_FINISHED  = 3;
@@ -50,7 +48,15 @@ static const zend_uchar ZEND_FIBER_STATUS_DEAD      = 4;
 
 ZEND_BEGIN_MODULE_GLOBALS(fiber)
 	zend_fiber *current_fiber;
+	zend_fiber *next_fiber;
 	zend_long   stack_size;
+
+	/* Suspended main execution context */
+	zend_execute_data *orig_execute_data;
+	zend_vm_stack orig_stack;
+	zval *orig_stack_top;
+	zval *orig_stack_end;
+
 	volatile zend_bool pending_interrupt;
 ZEND_END_MODULE_GLOBALS(fiber)
 
