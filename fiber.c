@@ -14,6 +14,12 @@
 #include "zend_exceptions.h"
 #include "zend_closures.h"
 
+/* PHP 7.3 compatibility macro */
+#ifndef GC_ADDREF
+# define GC_ADDREF(ref) ++GC_REFCOUNT(ref)
+# define GC_DELREF(ref) --GC_REFCOUNT(ref)
+#endif
+
 ZEND_API zend_class_entry *zend_ce_fiber;
 static zend_object_handlers zend_fiber_handlers;
 
@@ -107,7 +113,7 @@ static void zend_fiber_close(zend_fiber *fiber) /* {{{ */
 		if (UNEXPECTED(EX_CALL_INFO() & ZEND_CALL_RELEASE_THIS)) {
 			zend_object *object = Z_OBJ(execute_data->This);
 			if (UNEXPECTED(EG(exception) != NULL) && (EX_CALL_INFO() & ZEND_CALL_CTOR)) {
-				GC_REFCOUNT(object)--;
+				GC_DELREF(object);
 				zend_object_store_ctor_failed(object);
 			}
 			OBJ_RELEASE(object);
@@ -293,7 +299,7 @@ static int zend_fiber_call_function(zval *closure, zval *retval, uint32_t param_
 	}
 
 	ZEND_ASSERT(GC_TYPE((zend_object*)func->op_array.prototype) == IS_OBJECT);
-	GC_REFCOUNT((zend_object*)func->op_array.prototype)++;
+	GC_ADDREF((zend_object*)func->op_array.prototype);
 	ZEND_ADD_CALL_FLAG(call, ZEND_CALL_CLOSURE);
 
 	const zend_op *current_opline_before_exception = EG(opline_before_exception);
