@@ -22,6 +22,7 @@ struct _zend_fiber {
 	zval closure;
 
 	/* The suspended execution context. */
+	zend_execute_data *root_execute_data;
 	zend_execute_data *execute_data;
 
 	/* The separate stack used by fiber */
