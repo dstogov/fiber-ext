@@ -75,6 +75,10 @@ static void zend_fiber_cleanup_unfinished_execution(zend_execute_data *execute_d
 
 static void zend_fiber_close(zend_fiber *fiber) /* {{{ */
 {
+	zend_vm_stack original_stack;
+	size_t original_stack_page_size;
+	zend_execute_data *execute_data;
+
 	if (UNEXPECTED(fiber->status == ZEND_FIBER_STATUS_DEAD)) {
 		return;
 	}
@@ -85,15 +89,17 @@ static void zend_fiber_close(zend_fiber *fiber) /* {{{ */
 		return;
 	}
 
-	zend_vm_stack original_stack = EG(vm_stack);
+	original_stack = EG(vm_stack);
 	original_stack->top = EG(vm_stack_top);
 	original_stack->end = EG(vm_stack_end);
+	original_stack_page_size = EG(vm_stack_page_size);
 
 	EG(vm_stack_top) = fiber->stack->top;
 	EG(vm_stack_end) = fiber->stack->end;
 	EG(vm_stack) = fiber->stack;
+	EG(vm_stack_page_size) = fiber->stack_size;
 
-	zend_execute_data *execute_data = fiber->execute_data;
+	execute_data = fiber->execute_data;
 
 	while (execute_data) {
 		if (EX_CALL_INFO() & ZEND_CALL_HAS_SYMBOL_TABLE) {
@@ -118,6 +124,10 @@ static void zend_fiber_close(zend_fiber *fiber) /* {{{ */
 		/* A fatal error / die occurred during the fiber execution.
 		 * Trying to clean up the stack may not be safe in this case. */
 		if (UNEXPECTED(CG(unclean_shutdown))) {
+			EG(vm_stack_top) = original_stack->top;
+			EG(vm_stack_end) = original_stack->end;
+			EG(vm_stack) = original_stack;
+			EG(vm_stack_page_size) = original_stack_page_size;
 			return;
 		}
 
@@ -138,6 +148,7 @@ static void zend_fiber_close(zend_fiber *fiber) /* {{{ */
 	EG(vm_stack_top) = original_stack->top;
 	EG(vm_stack_end) = original_stack->end;
 	EG(vm_stack) = original_stack;
+	EG(vm_stack_page_size) = original_stack_page_size;
 }
 /* }}} */
 
@@ -173,9 +184,9 @@ static int zend_fiber_start(zend_fiber *fiber, zval *params, uint32_t param_coun
 	zend_fcall_info_cache fci_cache;
 	zend_function *func;
 	char *error = NULL;
+	zend_vm_stack stack;
 	zend_vm_stack current_stack;
-	zval *current_stack_top;
-	zval *current_stack_end;
+	size_t current_stack_page_size;
 	zend_execute_data *fiber_frame;
 
 	if (!zend_is_callable_ex(&fiber->closure, NULL, IS_CALLABLE_CHECK_SILENT, NULL, &fci_cache, &error)) {
@@ -186,10 +197,19 @@ static int zend_fiber_start(zend_fiber *fiber, zval *params, uint32_t param_coun
 	func = fci_cache.function_handler;
 
 	current_stack = EG(vm_stack);
-	current_stack_top = EG(vm_stack_top);
-	current_stack_end = EG(vm_stack_end);
+	current_stack->top = EG(vm_stack_top);
+	current_stack->end = EG(vm_stack_end);
+	current_stack_page_size = EG(vm_stack_page_size);
 
-	zend_vm_stack_init_ex(FIBER_G(stack_size));
+	stack = (zend_vm_stack)emalloc(fiber->stack_size);
+    stack->top = ZEND_VM_STACK_ELEMENTS(stack) + 1;
+	stack->end = (zval*)((char*)stack + fiber->stack_size);
+	stack->prev = NULL;
+
+	EG(vm_stack) = stack;
+	EG(vm_stack_top) = EG(vm_stack)->top;
+	EG(vm_stack_end) = EG(vm_stack)->end;
+	EG(vm_stack_page_size) = fiber->stack_size;
 
 	fiber_frame = (zend_execute_data*)EG(vm_stack_top);
 	EG(vm_stack_top) = (zval*)fiber_frame + ZEND_CALL_FRAME_SLOT;
@@ -224,8 +244,9 @@ static int zend_fiber_start(zend_fiber *fiber, zval *params, uint32_t param_coun
 						// TODO: cleanup
 
 						EG(vm_stack) = current_stack;
-						EG(vm_stack_top) = current_stack_top;
-						EG(vm_stack_end) = current_stack_end;
+						EG(vm_stack_top) = current_stack->top;
+						EG(vm_stack_end) = current_stack->end;
+						EG(vm_stack_page_size) = current_stack_page_size;
 
 						return FAILURE;
 					}
@@ -254,31 +275,35 @@ static int zend_fiber_start(zend_fiber *fiber, zval *params, uint32_t param_coun
 	fiber->status = ZEND_FIBER_STATUS_SUSPENDED;
 
 	fiber->stack = EG(vm_stack);
-	fiber->stack_top = EG(vm_stack_top);
-	fiber->stack_end = EG(vm_stack_end);
+	fiber->stack->top = EG(vm_stack_top);
+	fiber->stack->end = EG(vm_stack_end);
 
 	EG(vm_stack) = current_stack;
-	EG(vm_stack_top) = current_stack_top;
-	EG(vm_stack_end) = current_stack_end;
+	EG(vm_stack_top) = current_stack->top;
+	EG(vm_stack_end) = current_stack->end;
+	EG(vm_stack_page_size) = current_stack_page_size;
 
 	return SUCCESS;
 }
 /* }}} */
 
-/* {{{ proto Fiber Fiber::__construct(Closure closure)
+/* {{{ proto Fiber Fiber::__construct(Closure closure, int stack_size)
    Create a Fiber from a closure. */
 ZEND_METHOD(Fiber, __construct)
 {
 	zval *closure = NULL;
 	zend_fiber *fiber = NULL;
+	zend_long stack_size = FIBER_G(stack_size);
 
-	ZEND_PARSE_PARAMETERS_START(0, 1)
+	ZEND_PARSE_PARAMETERS_START(0, 2)
 		Z_PARAM_OPTIONAL
 		Z_PARAM_OBJECT_OF_CLASS(closure, zend_ce_closure)
+		Z_PARAM_LONG(stack_size);
 	ZEND_PARSE_PARAMETERS_END();
 
 	fiber = (zend_fiber *) Z_OBJ_P(getThis());
 	fiber->status = ZEND_FIBER_STATUS_INIT;
+	fiber->stack_size = stack_size;
 
 	if (closure) {
 		ZVAL_COPY(&fiber->closure, closure);
@@ -370,15 +395,16 @@ static void fiber_interrupt_function(zend_execute_data *execute_data)
 			ZEND_ASSERT(fiber->status == ZEND_FIBER_STATUS_RUNNING);
 			fiber->execute_data = execute_data;
 			fiber->stack = EG(vm_stack);
-			fiber->stack_top = EG(vm_stack_top);
-			fiber->stack_end = EG(vm_stack_end);
+			fiber->stack->top = EG(vm_stack_top);
+			fiber->stack->end = EG(vm_stack_end);
 			fiber->status = ZEND_FIBER_STATUS_SUSPENDED;
 		} else {
 			/* Buckup main execution context */
 			FIBER_G(orig_execute_data) = execute_data;
 			FIBER_G(orig_stack) = EG(vm_stack);
-			FIBER_G(orig_stack_top) = EG(vm_stack_top);
-			FIBER_G(orig_stack_end) = EG(vm_stack_end);
+			FIBER_G(orig_stack)->top = EG(vm_stack_top);
+			FIBER_G(orig_stack)->end = EG(vm_stack_end);
+			FIBER_G(orig_stack_page_size) = EG(vm_stack_page_size);
 		}
 
 		fiber = FIBER_G(next_fiber);
@@ -387,15 +413,17 @@ static void fiber_interrupt_function(zend_execute_data *execute_data)
 			ZEND_ASSERT(fiber->status == ZEND_FIBER_STATUS_SUSPENDED);
 			EG(current_execute_data) = fiber->execute_data;
 			EG(vm_stack) = fiber->stack;
-			EG(vm_stack_top) = fiber->stack_top;
-			EG(vm_stack_end) = fiber->stack_end;
+			EG(vm_stack_top) = fiber->stack->top;
+			EG(vm_stack_end) = fiber->stack->end;
+			EG(vm_stack_page_size) = fiber->stack_size;
 			fiber->status = ZEND_FIBER_STATUS_RUNNING;
 		} else {
 			/* Restore main execution context */
 			EG(current_execute_data) = FIBER_G(orig_execute_data);
 			EG(vm_stack) = FIBER_G(orig_stack);
-			EG(vm_stack_top) = FIBER_G(orig_stack_top);
-			EG(vm_stack_end) = FIBER_G(orig_stack_end);
+			EG(vm_stack_top) = FIBER_G(orig_stack)->top;
+			EG(vm_stack_end) = FIBER_G(orig_stack)->end;
+			EG(vm_stack_page_size) = FIBER_G(orig_stack_page_size);
 		}
 
 		FIBER_G(current_fiber) = fiber;
@@ -426,8 +454,6 @@ int fiber_terminate_opcode_handler(zend_execute_data *execute_data) /* {{{ */
 
 	fiber->execute_data = NULL;
 	fiber->stack = NULL;
-	fiber->stack_top = NULL;
-	fiber->stack_end = NULL;
 	fiber->original_fiber = NULL;
 	fiber->send_value = NULL;
 	if (EG(exception)) {

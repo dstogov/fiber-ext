@@ -26,8 +26,7 @@ struct _zend_fiber {
 
 	/* The separate stack used by fiber */
 	zend_vm_stack stack;
-	zval *stack_top;
-	zval *stack_end;
+	size_t stack_size;
 
 	/* original fiber to yield from this */
 	zend_fiber *original_fiber;
@@ -54,8 +53,7 @@ ZEND_BEGIN_MODULE_GLOBALS(fiber)
 	/* Suspended main execution context */
 	zend_execute_data *orig_execute_data;
 	zend_vm_stack orig_stack;
-	zval *orig_stack_top;
-	zval *orig_stack_end;
+	size_t orig_stack_page_size;
 
 	volatile zend_bool pending_interrupt;
 ZEND_END_MODULE_GLOBALS(fiber)
