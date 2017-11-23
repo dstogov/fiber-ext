@@ -271,6 +271,7 @@ static int zend_fiber_start(zend_fiber *fiber, zval *params, uint32_t param_coun
 	zend_init_func_execute_data(call, &func->op_array, NULL);
 	call->prev_execute_data = fiber_frame;
 
+	fiber->root_execute_data = call;
 	fiber->execute_data = call;
 	fiber->status = ZEND_FIBER_STATUS_SUSPENDED;
 
@@ -346,7 +347,7 @@ ZEND_METHOD(Fiber, resume)
 		return;
 	}
 
-	fiber->execute_data->return_value = USED_RET() ? return_value : NULL;
+	fiber->root_execute_data->return_value = USED_RET() ? return_value : NULL;
 	fiber->original_fiber = FIBER_G(current_fiber);
 	FIBER_G(next_fiber) = fiber;
 	FIBER_G(pending_interrupt) = 1;
