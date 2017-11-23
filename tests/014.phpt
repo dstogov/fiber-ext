@@ -1,5 +1,5 @@
 --TEST--
-tests Fiber stackful await
+tests Fiber stackful resume value
 --SKIPIF--
 <?php
 if (!extension_loaded('fiber')) {

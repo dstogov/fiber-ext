@@ -202,7 +202,7 @@ static int zend_fiber_start(zend_fiber *fiber, zval *params, uint32_t param_coun
 	current_stack_page_size = EG(vm_stack_page_size);
 
 	stack = (zend_vm_stack)emalloc(fiber->stack_size);
-    stack->top = ZEND_VM_STACK_ELEMENTS(stack) + 1;
+	stack->top = ZEND_VM_STACK_ELEMENTS(stack) + 1;
 	stack->end = (zval*)((char*)stack + fiber->stack_size);
 	stack->prev = NULL;
 
@@ -484,9 +484,9 @@ ZEND_METHOD(Fiber, yield)
 		Z_PARAM_ZVAL(ret);
 	ZEND_PARSE_PARAMETERS_END();
 
-	if (ret && fiber->execute_data->return_value) {
-		ZVAL_COPY(fiber->execute_data->return_value, ret);
-		fiber->execute_data->return_value = NULL;
+	if (ret && fiber->root_execute_data->return_value) {
+		ZVAL_COPY(fiber->root_execute_data->return_value, ret);
+		fiber->root_execute_data->return_value = NULL;
 	}
 
 	fiber->send_value = USED_RET() ? return_value : NULL;
