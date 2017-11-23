@@ -553,7 +553,7 @@ static const zend_function_entry fiber_functions[] = {
 PHP_MINIT_FUNCTION(fiber)
 {
 	zend_class_entry ce;
-	zend_uchar opcode = ZEND_VM_LAST_OPCODE;
+	zend_uchar opcode = ZEND_VM_LAST_OPCODE + 1;
 
 	/* Create new user opcode to terminate Fiber */
 	while (1) {
